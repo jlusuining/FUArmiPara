@@ -595,7 +595,8 @@ contains
       fname=OutStr
       write(*,*) fname
       open(88,file=fname)
-      write(88,'(A5, 8A20)') 'i', 'R(AU)', 'Sigma', 'Tc', 'Te', 'Sigm', 'Sigg', 'Nu', 'Q'
+      write(88, '(A4, F20.2, A2)') '# t=', t/syear, 'yr'
+      write(88,'(A1, A5, 8A20)') '#', 'i', 'R(AU)', 'Sigma', 'Tc', 'Te', 'Sigm', 'Sigg', 'Nu', 'Q'
       do i=1, nar+1
         write(88,'(I10, 8G20.12)') i, &
           md%R(i)/AU, &
