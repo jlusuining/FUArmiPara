@@ -1,4 +1,4 @@
-/rundir/
+/rundir/*
 !/rundir/inpara.txt
 !/rundir/Makefile
 !/rundir/*.gnu

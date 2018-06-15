@@ -1,0 +1,4 @@
+#!/bin/bash
+gnuplot mass.gnu
+gnuplot mdot.gnu
+gnuplot mdot_detail.gnu
