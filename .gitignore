@@ -1,6 +1,6 @@
-rundir/
-!rundir/inpara.txt
-!rundir/Makefile
-!rundir/*.gnu
-!rundir/plota
-!rundir/run
+/rundir/
+!/rundir/inpara.txt
+!/rundir/Makefile
+!/rundir/*.gnu
+!/rundir/plota
+!/rundir/run
