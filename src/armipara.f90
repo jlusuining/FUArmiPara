@@ -26,7 +26,7 @@ module input_parameter_mod
 contains
   subroutine get_parameters()
     implicit none
-    open(1,file='inpara.txt',status='old')
+    open(1,file='inpara_alpdead.txt',status='old')
     read(1,*) Rin_input
     read(1,*) Rout_input
     read(1,*) tend_input
