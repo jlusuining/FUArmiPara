@@ -15,6 +15,7 @@ module input_parameter_mod
 
   real(DP) :: alpha_MRI
   real(DP) :: alpha_GI0
+  real(DP) :: alpha_Dead
 
   real(DP) :: Tcrit_input
   real(DP) :: Sigcrit_input
@@ -38,6 +39,7 @@ contains
 
     read(1,*) alpha_MRI
     read(1,*) alpha_GI0
+    read(1,*) alpha_Dead
 
     read(1,*) Tcrit_input
     read(1,*) Sigcrit_input
@@ -58,6 +60,7 @@ contains
 
     write(*,*) alpha_MRI, 'alpha_MRI'
     write(*,*) alpha_GI0, 'alpha_GI0'
+    write(*,*) alpha_Dead, 'alpha_Dead'
 
     write(*,*) Tcrit_input, 'Tcrit K'
     write(*,*) Sigcrit_input, 'Sig_crit g cm-2 (default 200)'
@@ -682,7 +685,7 @@ contains
     implicit none
     real(DP), intent(out) :: nu_et, Te
     real(DP), intent(in) :: R, T, Sig, alp, Mu, Ms
-    real(DP) :: nu_a, Sig_a, alp_G, nu_G, Q, cs2, Ome
+    real(DP) :: nu_a, Sig_a, alp_G, nu_G, nu_D, Q, cs2, Ome
     real(DP) :: Sigm, Sigg, Tm, cs2m
     real(DP), save :: Sig_crit
     real(DP), save :: T_crit
@@ -728,7 +731,9 @@ contains
     !nu_G=alp_G*cs2/Ome*Sigg/Sig
     nu_G=alp_G*cs2/Ome
 
-    nu_et=nu_a+nu_G
+    nu_D=alpha_Dead*cs2/Ome
+
+    nu_et=nu_a+nu_G+nu_D
   end subroutine
 
   function Sigdotfun(R)
