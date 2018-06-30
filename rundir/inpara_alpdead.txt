@@ -1,15 +1,16 @@
 3.5E11    !Rin cm
 6.0E14    !Rout cm
 5.0E5     !tEnd year
-5.0E2     !tout year
-0.1       !percent_Mdot_input
 1.5E-6    !Mdotinfall_input Msun/year
 10.0      !Radd_input AU
 1.0       !dRadd_input AU
 0.01      !alpha_MRI
 0.01      !alpha_GI0
-1.0E-4    !alpha_Dead
-1000.0     !Tcrit
+0.0       !alpha_Dead
+800.0     !Tcrit
 200.0     !Sigcrit 200 default
 2.0       !Qcrit  2 default
 0.3       !Mstar Msun
+5.0E2     !tout year
+1.0       !output Mdot every ... year
+3, 3      !iMds, iMde; average Mdot(r) from radial bin iMds to iMde

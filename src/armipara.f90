@@ -6,8 +6,6 @@ module input_parameter_mod
   real(DP) :: Rin_input
   real(DP) :: Rout_input
   real(DP) :: tend_input
-  real(DP) :: tout_input
-  real(DP) :: percent_Mdot_input
 
   real(DP) :: Mdotinfall_input
   real(DP) :: Radd_input
@@ -23,6 +21,14 @@ module input_parameter_mod
 
   real(DP) :: Mstar_input
 
+  real(DP) :: tout_input
+  real(DP) :: percent_Mdot_input
+  real(DP) :: outMdot
+
+  !gives the average Mdot(r) from radial zone iMds to iMde
+  !Mdaver = \Sum (Mdr(iMds), Mdr(iMde)) / (iMde-iMds+1)
+  integer :: iMds, iMde
+
 contains
   subroutine get_parameters()
     implicit none
@@ -30,8 +36,7 @@ contains
     read(1,*) Rin_input
     read(1,*) Rout_input
     read(1,*) tend_input
-    read(1,*) tout_input
-    read(1,*) percent_Mdot_input
+
 
     read(1,*) Mdotinfall_input
     read(1,*) Radd_input
@@ -46,13 +51,18 @@ contains
     read(1,*) Qcirt_input
 
     read(1,*) Mstar_input
+
+    read(1,*) tout_input
+    !read(1,*) percent_Mdot_input
+    read(1,*) outMdot
+    read(1,*) iMds, iMde
+
     close(1)
 
     write(*,*) Rin_input, 'Rin cm'
     write(*,*) Rout_input, 'Rout cm'
     write(*,*) tend_input, 'tEnd year'
-    write(*,*) tout_input, 'tout year'
-    write(*,*) percent_Mdot_input, 'percent_Mdot'
+
 
     write(*,*) Mdotinfall_input, 'Mdotinfall Msun/year'
     write(*,*) Radd_input, 'Radd AU'
@@ -67,6 +77,11 @@ contains
     write(*,*) Qcirt_input, 'Qcrit default 2'
 
     write(*,*) Mstar_input, 'Mstar initail (Msun)'
+
+    write(*,*) tout_input, 'tout Sig Tem every ... year'
+    !write(*,*) percent_Mdot_input, 'percent_Mdot'
+    write(*,*) outMdot, 'out put Mdot every ... year'
+    write(*,*) iMds, iMde, 'average the Mdot(r) from radial bin iMds to iMde'
   end subroutine
 
 end module
@@ -193,7 +208,8 @@ module evolve_mod
 
     real(DP) :: alpha(0:nar+1), Nu(0:nar+1), cs2(0:nar+1)
     real(DP) :: Ome(0:nar+1)
-    real(DP) :: Md0, Md1, Md2
+    real(DP) :: Md0, Md1, Md2, Mdaver
+    real(DP) :: Mdr(0:nar+1)
 
     !sq=sqrt(), oo=1/()
     real(DP) :: sqR(0:nar+1), ooR(0:nar+1)
@@ -288,6 +304,7 @@ contains
 
     do i=1, nar+1
       rdnsrdr(i)=tdisk%sqRh(i)*(nsr(i)-nsr(i-1))*tdisk%oodR(i)
+      tdisk%Mdr(i)=-6.0_DP*Pi*rdnsrdr(i)
     end do
 
     do i=1, nar
@@ -473,12 +490,20 @@ contains
     implicit none
     type(disk), intent(inout) :: tdisk
     real(DP) :: nsr1, nsr2, nsr3
+    integer :: i
+
     nsr1=tdisk%Nu(1)*tdisk%Sig(1)*tdisk%sqR(1)
     nsr2=tdisk%Nu(2)*tdisk%Sig(2)*tdisk%sqR(2)
     nsr3=tdisk%Nu(3)*tdisk%Sig(3)*tdisk%sqR(3)
     tdisk%Md0=-6.0_DP*Pi*tdisk%sqRh(1)*(nsr1-0.0_DP)/tdisk%dR(1)
     tdisk%Md1=-6.0_DP*Pi*tdisk%sqRh(2)*(nsr2-nsr1)/tdisk%dR(2)
     tdisk%Md2=-6.0_DP*Pi*tdisk%sqRh(3)*(nsr3-nsr2)/tdisk%dR(3)
+
+    tdisk%Mdaver=0.0_DP
+    do i=iMds, iMde
+      tdisk%Mdaver=tdisk%Mdaver+tdisk%Mdr(i)
+    end do
+    tdisk%Mdaver=tdisk%Mdaver/dble(iMde-iMds)
   end subroutine
 
   subroutine calc_disk_luminosity(tdisk)
@@ -599,9 +624,11 @@ contains
       write(*,*) fname
       open(88,file=fname)
       write(88, '(A4, F20.1, A4)') '# t=', t/syear, '  yr'
-      write(88,'(A1, 7X, A1, A11, 7A20)') '#', 'i', 'R(AU)', 'Sigma', 'Tc', 'Te', 'Sigm', 'Sigg', 'Nu', 'Q'
+      write(88,'(A1, 7X, A1, A11, 7A20, 7X, A20)') &
+        '#', 'i', 'R(AU)', 'Sigma', 'Tc', 'Te', &
+        'Sigm', 'Sigg', 'Nu', 'Q', 'Mdot(Msun/yr)'
       do i=1, nar+1
-        write(88,'(I10, 8G20.12)') i, &
+        write(88,'(I10, 9G20.12)') i, &
           md%R(i)/AU, &
           md%Sig(i), &
           md%Tc(i), &
@@ -609,7 +636,8 @@ contains
           md%Sigm(i), &
           md%Sigg(i), &
           md%Nu(i), &
-          md%QToom(i)
+          md%QToom(i), &
+          md%Mdr(i)/Msun*syear
       end do
       close(88)
       tnext=tnext+tout
@@ -617,7 +645,7 @@ contains
 
     if (ifirst/=666) then
       tnext=t+tout
-      write(*,*) 'tnext', tnext/syear
+      !write(*,*) 'tnext', tnext/syear
       ifirst=666
     end if
 
@@ -627,7 +655,7 @@ contains
     !output the disk accretion rate
     implicit none
     integer, save :: ifirst=0
-    real(DP), save :: Mdsave, Lsave
+    real(DP), save :: Mdsave, Lsave, tnext
 
     if (ifirst/=666) then
       open(99,file='m.txt')
@@ -636,16 +664,19 @@ contains
       Mdsave=md%Md2
       Lsave=md%Luminosity
       ifirst=666
+      tnext=0.001_DP
     endif
 
     !if (abs((md%Md2-Mdsave)/Mdsave)>percent_Mdot_input) then
-    if (abs((md%Luminosity-Lsave)/Lsave)>percent_Mdot_input) then
+    !if (abs((md%Luminosity-Lsave)/Lsave)>percent_Mdot_input) then
+    if (md%t > tnext) then
       open(99,file='m.txt',status='old',position='append')
       md%Massdisk=mdisk()
       write(99,'(5G20.12)') md%t/syear, -md%Md2/Msun*syear, md%Massdisk/Msun, Mstar/Msun, md%Luminosity/Lsun
       close(99)
       Mdsave=md%Md2
-      Lsave=md%Luminosity
+      !Lsave=md%Luminosity
+      tnext=md%t+syear*outMdot
     end if
   end subroutine
 
