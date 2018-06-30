@@ -194,6 +194,7 @@ module evolve_mod
   real(DP), parameter :: syear=31556952_DP   !cgs
   real(DP), parameter :: AU=1.49597870E13_DP !cgs
   real(DP), parameter :: Lsun=3.9E33_DP      !cgs erg s-1
+  real(DP), parameter :: Rsun=6.955E10_DP    !cgs cm
 
   !struct for disk
   type :: disk
@@ -219,7 +220,7 @@ module evolve_mod
 
   type(disk) :: md
 
-  real(DP) :: Mstar
+  real(DP) :: Mstar, Lstar, Lacc
 
   !temporary variables
   real(DP) :: Sigm_temp, Sigg_temp, Q_temp, Te_temp
@@ -231,6 +232,15 @@ contains
     !set the initial mass of the Star
     Mstar=Mstar_input*Msun
   end subroutine
+
+  function luminosity_star(Starmass)
+    implicit none
+    real(DP) :: luminosity_star
+    real(DP), intent(in) :: Starmass
+    real(DP) :: lg10lum
+    lg10lum=0.20_DP + 1.74_DP*log10(Starmass/Msun)
+    luminosity_star=Lsun*10.0_DP**lg10lum
+  end function
 
   subroutine init_disk()
     implicit none
@@ -503,7 +513,7 @@ contains
     do i=iMds, iMde
       tdisk%Mdaver=tdisk%Mdaver+tdisk%Mdr(i)
     end do
-    tdisk%Mdaver=tdisk%Mdaver/dble(iMde-iMds)
+    tdisk%Mdaver=tdisk%Mdaver/dble(iMde-iMds+1)
   end subroutine
 
   subroutine calc_disk_luminosity(tdisk)
@@ -517,6 +527,19 @@ contains
       tdisk%Luminosity=tdisk%Luminosity+2.0_DP*Pi*tdisk%R(i)*tdisk%dR(i)*Stfb*tdisk%Te(i)**4
     end do
   end subroutine
+
+  function acc_luminosity(mar, Starmass)
+    implicit none
+    !calculate disk accretion luminosity
+    real(DP) :: acc_luminosity
+    !mass accretion rate
+    real(DP), intent(in) :: mar, Starmass
+
+    !Bae et al 2014
+    acc_luminosity=0.5_DP * Grav*mar*Starmass/Rsun
+    !Hartmann et al. (2016) uses 0.8 instead of 0.5
+    !Here, we use 0.5 as in Bae et al 2014
+  end function
 
   subroutine evolve(thedisk, Ms, tend)
     !evolution of the disk
@@ -573,6 +596,11 @@ contains
       call calc_disk_acc(thedisk)
       !calculate disk luminosity
       call calc_disk_luminosity(thedisk)
+      !calculate star luminosity
+      Lstar=luminosity_star(Mstar)
+      !calculate accretion luminosity
+      Lacc=acc_luminosity(Mstar, thedisk%Mdaver)
+
       !add Mdot0 into Mstar
       Mstar=Mstar-md%Md0*dt
 
@@ -659,7 +687,10 @@ contains
 
     if (ifirst/=666) then
       open(99,file='m.txt')
-      write(99,'(A10, 5X, 4A20)') '#t(yr)', 'Mdot(Msun/yr)', 'Mdisk(Msun)', 'Mstar(Msun)', "Lumi_disk(Lsun)"
+      write(99,'(A10, 5X, 3A20)') '#t(yr)', 'Mdot(Msun/yr)', 'Mdisk(Msun)', 'Mstar(Msun)'
+      close(99)
+      open(99,file='lumi.txt')
+      write(99,'(A10, 5X, 4A20)') '#t(yr)', 'Lumi_disk(Lsun)', 'Lumi_acc(Lsun)', 'Lumi_star(Lsun)', 'Lumi_tot(Lsun)'
       close(99)
       Mdsave=md%Md2
       Lsave=md%Luminosity
@@ -672,7 +703,11 @@ contains
     if (md%t > tnext) then
       open(99,file='m.txt',status='old',position='append')
       md%Massdisk=mdisk()
-      write(99,'(5G20.12)') md%t/syear, -md%Md2/Msun*syear, md%Massdisk/Msun, Mstar/Msun, md%Luminosity/Lsun
+      write(99,'(4G20.12)') md%t/syear, -md%Md2/Msun*syear, md%Massdisk/Msun, Mstar/Msun
+      close(99)
+      open(99,file='lumi.txt',status='old',position='append')
+      md%Massdisk=mdisk()
+      write(99,'(5G20.12)') md%t/syear, md%Luminosity/Lsun, Lacc/Lsun, Lstar/Lsun, (md%Luminosity+Lacc+Lstar)/Lsun
       close(99)
       Mdsave=md%Md2
       !Lsave=md%Luminosity
