@@ -1,4 +1,14 @@
 #!/bin/bash
 gnuplot mass.gnu
 gnuplot mdot.gnu
+convert -density 800 Mdot.eps Mdot.png
 gnuplot mdot_detail.gnu
+gnuplot lumidisk.gnu
+gnuplot lumistar.gnu
+gnuplot lumiacc.gnu
+gnuplot lumitot.gnu
+
+convert -density 800 Lumi-disk.eps Lumi-disk.png
+convert -density 800 Lumi-acc.eps Lumi-acc.png
+convert -density 800 Lumi-tot.eps Lumi-tot.png
+

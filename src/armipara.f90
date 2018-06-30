@@ -536,7 +536,7 @@ contains
     real(DP), intent(in) :: mar, Starmass
 
     !Bae et al 2014
-    acc_luminosity=0.5_DP * Grav*mar*Starmass/Rsun
+    acc_luminosity=0.5_DP * Grav*(-mar)*Starmass/Rsun
     !Hartmann et al. (2016) uses 0.8 instead of 0.5
     !Here, we use 0.5 as in Bae et al 2014
   end function
@@ -599,7 +599,7 @@ contains
       !calculate star luminosity
       Lstar=luminosity_star(Mstar)
       !calculate accretion luminosity
-      Lacc=acc_luminosity(Mstar, thedisk%Mdaver)
+      Lacc=acc_luminosity(thedisk%Mdaver, Mstar)
 
       !add Mdot0 into Mstar
       Mstar=Mstar-md%Md0*dt
