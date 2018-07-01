@@ -5,3 +5,5 @@
 !/rundir/*.gnu
 !/rundir/plota
 !/rundir/run
+!/rundir/find.f90
+!/rundir/find2.f90
