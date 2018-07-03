@@ -817,6 +817,78 @@ contains
     endif
   end function
 
+  function opacityRossS2003(Temp, rho)
+    implicit none
+    real(8) :: opacityRossS2003
+    real(8), intent(in) :: Temp, rho
+    real(8), save :: opacRoss(10000,111)
+    integer :: iT, ir
+    integer, save :: ifirst=0
+
+    if (ifirst/=123456) then
+      open(444,file='kR.bin',form='unformatted',status='old')
+      do iT=1, 10000
+        read(444) opacRoss(iT,:)
+      end do
+      close(444)
+      !write(*,*)'Rosseland Opacity Readed'
+      ifirst=123456
+    end if
+
+    iT=nint(Temp)
+    ir=nint((log10(rho)+18.0_8)/0.1_8)+1
+
+    if (iT<5) then
+      iT=5
+    else if (iT>=9999) then
+      iT=9999
+    end if
+
+    if (ir<1) then
+      ir=1
+    else if (ir>110) then
+      ir=110
+    end if
+
+    opacityRossS2003=opacRoss(iT, ir)
+  end function
+
+  function opacityPlanckS2003(Temp, rho)
+    implicit none
+    real(8) :: opacityPlanckS2003
+    real(8), intent(in) :: Temp, rho
+    real(8), save :: opacPlanck(10000,111)
+    integer :: iT, ir
+    integer, save :: ifirst=0
+
+    if (ifirst/=123456) then
+      open(445,file='kP.bin',form='unformatted',status='old')
+      do iT=1, 10000
+        read(445) opacPlanck(iT,:)
+      end do
+      close(445)
+      !write(*,*)'Planck Opacity Readed'
+      ifirst=123456
+    end if
+
+    iT=nint(Temp)
+    ir=nint((log10(rho)+18.0_8)/0.1_8)+1
+
+    if (iT<5) then
+      iT=5
+    else if (iT>=9999) then
+      iT=9999
+    end if
+
+    if (ir<1) then
+      ir=1
+    else if (ir>110) then
+      ir=110
+    end if
+
+    opacityPlanckS2003=opacPlanck(iT, ir)
+  end function
+
   function kappa(T, rho)
     !opacity
     implicit none
@@ -910,7 +982,8 @@ contains
     H=sqrt(Rgas*Tc/Mu)/Ome
     rho=Sig/2.0_DP/H
     Q=sqrt(Rgas*Tc/Mu)*Ome/Pi/Grav/Sig
-    kap=kappa(Tc, rho)
+    !kap=kappa(Tc, rho)
+    kap=opacityRossS2003(Tc, rho) !Use Semenov et al 2003 opacity
     if (Q<Qcirt_input) then
       tau=Sig/2.0_DP*kap
     else

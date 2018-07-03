@@ -8,7 +8,7 @@
 1.0       !dRadd_input AU
 0.01      !alpha_MRI
 0.01      !alpha_GI0
-1000.0     !Tcrit
+800.0     !Tcrit
 200.0     !Sigcrit 200 default
 2.0       !Qcrit  2 default
 0.3       !Mstar Msun
