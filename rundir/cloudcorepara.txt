@@ -1,0 +1,9 @@
+Temp_Core
+10.0
+W_Core
+1.0E-14
+Mass_Core
+1.0
+Mu_Core
+2.33
+
