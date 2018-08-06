@@ -3,17 +3,17 @@
 #
 
 SRCS_f90d1 = \
-armipara.f90 
+adc.f90 
 
 OBJS_f90d1 = \
-armipara.o 
+adc.o 
 
 ORI_SRC_DIR_F90d1 = ../src/
 SRC_DIR_f90d1 = ./
 OBJS_DIR = obj/
 EXE_DIR = ./
 
-EXE = armipara.out
+EXE = adc.out
 FC = ifort
 LD = ifort
 IDIR = 
@@ -42,6 +42,6 @@ clean :
 
 # Dependencies of files
 main.o: \
-    armipara.f90
+    adc.f90
 
 
