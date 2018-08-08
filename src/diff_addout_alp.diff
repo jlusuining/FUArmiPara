@@ -1,0 +1,40 @@
+389c389
+<   integer, parameter :: nar=1200 !Armitage
+---
+>   integer, parameter :: nar=600 !Armitage
+403d402
+<     real(DP) :: alpMRI(0:nar+1), alpGI(0:nar+1), alpdead(0:nar+1)
+422d420
+<   real(DP) :: alpMRI_temp, alpdead_temp, alpGI_temp
+767,769d764
+<         thedisk%alpMRI(i)=alpMRI_temp
+<         thedisk%alpGI(i)=alpGI_temp
+<         thedisk%alpdead(i)=alpdead_temp
+866c861
+<         write(88,'(I10, 12G20.12)') i, &
+---
+>         write(88,'(I10, 9G20.12)') i, &
+875,878c870
+<           md%Mdr(i)/Msun*syear, &
+<           md%alpMRI(i), &
+<           md%alpGI(i), &
+<           md%alpdead(i)
+---
+>           md%Mdr(i)/Msun*syear
+916c908
+<       write(99,'(4G20.12)') md%t/syear, -md%Mdaver/Msun*syear, md%Massdisk/Msun, Mstar/Msun
+---
+>       write(99,'(4G20.12)') md%t/syear, -md%Md2/Msun*syear, md%Massdisk/Msun, Mstar/Msun
+993,994d984
+<     Sigm_temp=Sig_a
+<     Sigg_temp=Sig-Sig_a
+998d987
+<     alpMRI_temp=Sig_a/Sig*alp
+1010,1014d998
+<     if (alp_G>0.05_DP) then
+<       write(*,*) alp_G
+<       alp_G=0.05_DP
+<     end if
+<     alpGI_temp=alp_G
+1019d1002
+<     alpdead_temp=alpha_Dead

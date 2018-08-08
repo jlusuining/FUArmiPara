@@ -386,7 +386,7 @@ module evolve_mod
   !variable type 8 for double precision
   !integer, parameter :: DP=8
   !length of array (Martin=200)
-  integer, parameter :: nar=120 !Armitage
+  integer, parameter :: nar=1200 !Armitage
 
   !struct for disk
   type :: disk
@@ -400,6 +400,7 @@ module evolve_mod
     real(DP) :: Luminosity
 
     real(DP) :: alpha(0:nar+1), Nu(0:nar+1), cs2(0:nar+1)
+    real(DP) :: alpMRI(0:nar+1), alpGI(0:nar+1), alpdead(0:nar+1)
     real(DP) :: Ome(0:nar+1)
     real(DP) :: Md0, Md1, Md2, Mdaver
     real(DP) :: Mdr(0:nar+1)
@@ -418,6 +419,7 @@ module evolve_mod
 
   !temporary variables
   real(DP) :: Sigm_temp, Sigg_temp, Q_temp, Te_temp
+  real(DP) :: alpMRI_temp, alpdead_temp, alpGI_temp
 
 contains
 
@@ -762,6 +764,9 @@ contains
         thedisk%Sigm(i)=Sigm_temp
         thedisk%Sigg(i)=Sigg_temp
         thedisk%QToom(i)=Q_temp
+        thedisk%alpMRI(i)=alpMRI_temp
+        thedisk%alpGI(i)=alpGI_temp
+        thedisk%alpdead(i)=alpdead_temp
         !thedisk%Nu(i)=nu_et(thedisk%R(i), thedisk%Tc(i), thedisk%Sig(i), thedisk%alpha(i), thedisk%Mu, Ms)
       end do
 
@@ -858,7 +863,7 @@ contains
         '#', 'i', 'R(AU)', 'Sigma', 'Tc', 'Te', &
         'Sigm', 'Sigg', 'Nu', 'Q', 'Mdot(Msun/yr)'
       do i=1, nar+1
-        write(88,'(I10, 9G20.12)') i, &
+        write(88,'(I10, 12G20.12)') i, &
           md%R(i)/AU, &
           md%Sig(i), &
           md%Tc(i), &
@@ -867,7 +872,10 @@ contains
           md%Sigg(i), &
           md%Nu(i), &
           md%QToom(i), &
-          md%Mdr(i)/Msun*syear
+          md%Mdr(i)/Msun*syear, &
+          md%alpMRI(i), &
+          md%alpGI(i), &
+          md%alpdead(i)
       end do
       close(88)
       tnext=tnext+tout
@@ -905,7 +913,7 @@ contains
     if (md%t > tnext) then
       open(99,file='m.txt',status='old',position='append')
       md%Massdisk=mdisk()
-      write(99,'(4G20.12)') md%t/syear, -md%Md2/Msun*syear, md%Massdisk/Msun, Mstar/Msun
+      write(99,'(4G20.12)') md%t/syear, -md%Mdaver/Msun*syear, md%Massdisk/Msun, Mstar/Msun
       close(99)
       open(99,file='lumi.txt',status='old',position='append')
       md%Massdisk=mdisk()
@@ -982,9 +990,12 @@ contains
     else
       Sig_a=Sig_crit
     end if
+    Sigm_temp=Sig_a
+    Sigg_temp=Sig-Sig_a
     cs2=Rgas*T/Mu
     Ome=Omega_fun(R, Ms)
     nu_a=Sig_a/Sig*alp*cs2/Ome
+    alpMRI_temp=Sig_a/Sig*alp
     !cs2m=Rgas*Tm/Mu
     !nu_a=Sigm/Sig*alp*cs2m/Ome
 
@@ -996,10 +1007,16 @@ contains
     else
       alp_G=0.0_DP
     end if
+    if (alp_G>0.05_DP) then
+      write(*,*) alp_G
+      alp_G=0.05_DP
+    end if
+    alpGI_temp=alp_G
     !nu_G=alp_G*cs2/Ome*Sigg/Sig
     nu_G=alp_G*cs2/Ome
 
     nu_D=alpha_Dead*cs2/Ome
+    alpdead_temp=alpha_Dead
 
     nu_et=nu_a+nu_G+nu_D
   end subroutine
