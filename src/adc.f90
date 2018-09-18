@@ -396,11 +396,11 @@ module evolve_mod
     real(DP) :: Rin, Rout
     real(DP) :: Mu
     real(DP) :: cp
-    real(DP) :: Massdisk
+    real(DP) :: Massdisk, u_mdmtot
     real(DP) :: Luminosity
 
     real(DP) :: alpha(0:nar+1), Nu(0:nar+1), cs2(0:nar+1)
-    real(DP) :: alpMRI(0:nar+1), alpGI(0:nar+1), alpdead(0:nar+1)
+    real(DP) :: alpMRIeff(0:nar+1), alpGI(0:nar+1), alpdead(0:nar+1)
     real(DP) :: Ome(0:nar+1)
     real(DP) :: Md0, Md1, Md2, Mdaver
     real(DP) :: Mdr(0:nar+1)
@@ -755,18 +755,45 @@ contains
     !main loop
     do while (thedisk%t<tend)
 
+      thedisk%Massdisk=mdisk()
+      thedisk%u_mdmtot=thedisk%Massdisk/(thedisk%Massdisk+Ms)
+
       !calculate Nu_tot
       do i=0, nar+1
         thedisk%Ome(i)=Omega_fun(thedisk%R(i), Ms)
         thedisk%cs2(i)=cs2_fun(thedisk%Tc(i), thedisk%Mu)
-        !thedisk%Nu(i)=nu_fun(thedisk%alpha(i), thedisk%cs2(i), thedisk%Ome(i))
-        call calc_nuet(thedisk%R(i), thedisk%Tc(i), thedisk%Sig(i), thedisk%alpha(i), thedisk%Mu, Ms, thedisk%Nu(i), thedisk%Te(i))
-        thedisk%Sigm(i)=Sigm_temp
-        thedisk%Sigg(i)=Sigg_temp
-        thedisk%QToom(i)=Q_temp
-        thedisk%alpMRI(i)=alpMRI_temp
-        thedisk%alpGI(i)=alpGI_temp
-        thedisk%alpdead(i)=alpdead_temp
+
+       if (thedisk%Sig(i)==0.0_DP) then
+        thedisk%alpMRIeff(i)=0.0_DP
+        thedisk%QToom(i)=1.0E6_DP
+        thedisk%alpGI(i)=0.0_DP
+        thedisk%alpdead(i)=0.0_DP
+        thedisk%alpha(i)=0.0_DP
+        thedisk%Nu(i)=0.0_DP
+       else
+
+        !calc alp_MRI_eff, input(Tc, Sig), output(alpMRIeff, Sigm, Sigg=Sig-Sigm)
+        call calc_alpMRIeff(thedisk%Tc(i), thedisk%Sig(i), thedisk%alpMRIeff(i), thedisk%Sigm(i), thedisk%Sigg(i))
+
+        !calc QToom, then alpGI, using u_mdmtot if choose Kratter
+        thedisk%QToom(i)=QToom(thedisk%cs2(i), thedisk%Ome(i), thedisk%Sig(i))
+        thedisk%alpGI(i)=alpha_GI_Kratter(thedisk%QToom(i), thedisk%u_mdmtot)
+        !thedisk%alpGI(i)=alpha_GI_Arimitage(thedisk%QToom(i))
+
+        thedisk%alpdead(i)=alpha_dead_const()
+
+        !total alpha, Nu
+        thedisk%alpha(i)=thedisk%alpMRIeff(i)+thedisk%alpGI(i)+thedisk%alpdead(i)
+        thedisk%Nu(i)=nu_fun(thedisk%alpha(i), thedisk%cs2(i), thedisk%Ome(i))
+       end if
+
+        !call calc_nuet(thedisk%R(i), thedisk%Tc(i), thedisk%Sig(i), thedisk%alpha(i), thedisk%Mu, Ms, thedisk%Nu(i), thedisk%Te(i))
+        !thedisk%Sigm(i)=Sigm_temp
+        !thedisk%Sigg(i)=Sigg_temp
+        !thedisk%QToom(i)=Q_temp
+        !thedisk%alpMRIeff(i)=alpMRI_temp
+        !thedisk%alpGI(i)=alpGI_temp
+        !thedisk%alpdead(i)=alpdead_temp
         !thedisk%Nu(i)=nu_et(thedisk%R(i), thedisk%Tc(i), thedisk%Sig(i), thedisk%alpha(i), thedisk%Mu, Ms)
       end do
 
@@ -873,7 +900,7 @@ contains
           md%Nu(i), &
           md%QToom(i), &
           md%Mdr(i)/Msun*syear, &
-          md%alpMRI(i), &
+          md%alpMRIeff(i), &
           md%alpGI(i), &
           md%alpdead(i)
       end do
@@ -916,7 +943,7 @@ contains
       write(99,'(4G20.12)') md%t/syear, -md%Mdaver/Msun*syear, md%Massdisk/Msun, Mstar/Msun
       close(99)
       open(99,file='lumi.txt',status='old',position='append')
-      md%Massdisk=mdisk()
+      !md%Massdisk=mdisk()
       write(99,'(5G20.12)') md%t/syear, md%Luminosity/Lsun, Lacc/Lsun, Lstar/Lsun, (md%Luminosity+Lacc+Lstar)/Lsun
       close(99)
       Mdsave=md%Md2
@@ -954,6 +981,83 @@ contains
     real(DP) :: nu_fun
     real(DP), intent(in) :: alp, cs2, Ome
     nu_fun=alp*cs2/Ome
+  end function
+
+  function QToom(cs2, Ome, Sig)
+    implicit none
+    real(DP) :: QToom
+    real(DP), intent(in) :: cs2, Ome, Sig
+    QToom=sqrt(cs2)*Ome/Pi/Grav/Sig
+  end function
+
+  function alpha_GI_Zhu(QR)
+    implicit none
+    real(DP) :: alpha_GI_Zhu
+    real(DP), intent(in) :: QR
+    alpha_GI_Zhu=exp(-QR**4)
+  end function
+
+  function alpha_GI_Kratter(QR, u)
+    !Kratter 2008 681:375 Eq.15-17 Q=max(Q,1) u=Md/(Md+Mstar) Eq.10
+    implicit none
+    real(DP) :: alpha_GI_Kratter
+    real(DP), intent(in) :: QR, u
+    real(DP) :: alp_short, alp_long, QR2
+    QR2=max(1.0_DP, QR)
+    alp_short=max(0.14_DP*(1.3_DP**2/QR2**2-1.0_DP)*(1.0_DP-u)**1.15_DP, 0.0_DP)
+    alp_long=max((1.4E-3_DP*(2.0_DP-QR2))/(u**1.25_DP*sqrt(QR2)), 0.0_DP)
+    alpha_GI_Kratter=sqrt(alp_short**2+alp_long**2)
+    if (alpha_GI_Kratter>0.05_DP) then
+      write(*,*) alpha_GI_Kratter
+      alpha_GI_Kratter=0.05_DP
+    end if
+  end function
+
+  function alpha_GI_Arimitage(Q)
+    implicit none
+    real(DP) :: alpha_GI_Arimitage
+    real(DP), intent(in) :: Q
+    if (Q<Qcirt_input) then
+      alpha_GI_Arimitage=alpha_GI0*((Qcirt_input/Q)**2-1.0_DP)
+    else
+      alpha_GI_Arimitage=0.0_DP
+    end if
+    if (alpha_GI_Arimitage>0.05_DP) then
+      write(*,*) alpha_GI_Arimitage
+      alpha_GI_Arimitage=0.05_DP
+    end if
+  end function
+
+
+  subroutine calc_alpMRIeff(T, Sig, alpMRIeff, Sig_a, Sig_d)
+    implicit none
+    real(DP), intent(out) :: alpMRIeff, Sig_a, Sig_d
+    real(DP), intent(in) :: T, Sig
+
+    if (T>Tcrit_input.OR.Sig<Sigcrit_input) then
+      Sig_a=Sig
+      Sig_d=0.0_DP
+    else
+      Sig_a=Sigcrit_input
+      Sig_d=Sig-Sig_a
+    end if
+
+    alpMRIeff=Sig_a/Sig*alpha_MRI
+  end subroutine
+
+  function alpha_dead_const()
+    implicit none
+    real(DP) :: alpha_dead_const
+    alpha_dead_const=alpha_Dead
+  end function
+
+  function alpha_dead_Bae(Sig_a, Sig_d)
+    implicit none
+    real(DP) :: alpha_dead_Bae
+    real(DP), intent(in) :: Sig_a, Sig_d
+    real(DP) :: frd
+    frd=0.1_DP
+    alpha_dead_Bae=min(1.0E-4_DP, frd*alpha_MRI*Sig_a/Sig_d)
   end function
 
   subroutine calc_nuet(R, T, Sig, alp, Mu, Ms, nu_et, Te)
@@ -1020,6 +1124,7 @@ contains
 
     nu_et=nu_a+nu_G+nu_D
   end subroutine
+
 
   function Sigdotfun(R)
     implicit none

@@ -1,13 +1,28 @@
-module input_parameter_mod
+module ConstantMod
   implicit none
   !variable type 8 for double precision
   integer, parameter :: DP=8
+  !constants
+  real(DP), parameter :: Pi=3.14159265358979_DP
+  real(DP), parameter :: Grav=6.672E-8_DP    !cgs
+  real(DP), parameter :: Rgas=8.31441E7_DP   !cgs
+  real(DP), parameter :: Stfb=5.67032E-5_DP  !cgs
+  real(DP), parameter :: Msun=1.9891E33_DP   !cgs
+  real(DP), parameter :: syear=31556952_DP   !cgs
+  real(DP), parameter :: AU=1.49597870E13_DP !cgs
+  real(DP), parameter :: Lsun=3.9E33_DP      !cgs erg s-1
+  real(DP), parameter :: Rsun=6.955E10_DP    !cgs cm
+end module
+
+module input_parameter_mod
+  use ConstantMod
+  implicit none
+  !variable type 8 for double precision
+  !integer, parameter :: DP=8
 
   real(DP) :: Rin_input
   real(DP) :: Rout_input
   real(DP) :: tend_input
-  real(DP) :: tout_input
-  real(DP) :: percent_Mdot_input
 
   real(DP) :: Mdotinfall_input
   real(DP) :: Radd_input
@@ -15,20 +30,30 @@ module input_parameter_mod
 
   real(DP) :: alpha_MRI
   real(DP) :: alpha_GI0
+  real(DP) :: alpha_Dead
 
   real(DP) :: Tcrit_input
   real(DP) :: Sigcrit_input
   real(DP) :: Qcirt_input
 
+  real(DP) :: Mstar_input
+
+  real(DP) :: tout_input
+  real(DP) :: percent_Mdot_input
+  real(DP) :: outMdot
+
+  !gives the average Mdot(r) from radial zone iMds to iMde
+  !Mdaver = \Sum (Mdr(iMds), Mdr(iMde)) / (iMde-iMds+1)
+  integer :: iMds, iMde
+
 contains
   subroutine get_parameters()
     implicit none
-    open(1,file='inpara.txt',status='old')
+    open(1,file='inpara_alpdead.txt',status='old')
     read(1,*) Rin_input
     read(1,*) Rout_input
     read(1,*) tend_input
-    read(1,*) tout_input
-    read(1,*) percent_Mdot_input
+
 
     read(1,*) Mdotinfall_input
     read(1,*) Radd_input
@@ -36,17 +61,25 @@ contains
 
     read(1,*) alpha_MRI
     read(1,*) alpha_GI0
+    read(1,*) alpha_Dead
 
     read(1,*) Tcrit_input
     read(1,*) Sigcrit_input
     read(1,*) Qcirt_input
+
+    read(1,*) Mstar_input
+
+    read(1,*) tout_input
+    !read(1,*) percent_Mdot_input
+    read(1,*) outMdot
+    read(1,*) iMds, iMde
+
     close(1)
 
     write(*,*) Rin_input, 'Rin cm'
     write(*,*) Rout_input, 'Rout cm'
     write(*,*) tend_input, 'tEnd year'
-    write(*,*) tout_input, 'tout year'
-    write(*,*) percent_Mdot_input, 'percent_Mdot'
+
 
     write(*,*) Mdotinfall_input, 'Mdotinfall Msun/year'
     write(*,*) Radd_input, 'Radd AU'
@@ -54,10 +87,18 @@ contains
 
     write(*,*) alpha_MRI, 'alpha_MRI'
     write(*,*) alpha_GI0, 'alpha_GI0'
+    write(*,*) alpha_Dead, 'alpha_Dead'
 
     write(*,*) Tcrit_input, 'Tcrit K'
     write(*,*) Sigcrit_input, 'Sig_crit g cm-2 (default 200)'
     write(*,*) Qcirt_input, 'Qcrit default 2'
+
+    write(*,*) Mstar_input, 'Mstar initail (Msun)'
+
+    write(*,*) tout_input, 'tout Sig Tem every ... year'
+    !write(*,*) percent_Mdot_input, 'percent_Mdot'
+    write(*,*) outMdot, 'out put Mdot every ... year'
+    write(*,*) iMds, iMde, 'average the Mdot(r) from radial bin iMds to iMde'
   end subroutine
 
 end module
@@ -150,25 +191,202 @@ contains
   !BL
 END MODULE
 
+
+
+module CloudCoreMod
+  use ConstantMod
+  use input_parameter_mod
+  implicit none
+  real(DP) :: Temp_Core
+  real(DP) :: Radius_Core
+  real(DP) :: W_Core
+  real(DP) :: Mass_Core
+  real(DP) :: Mu_Core
+  real(DP) :: tlife_Core
+
+contains
+  function SoundSpeed2_Core()
+    implicit none
+    real(DP) :: SoundSpeed2_Core
+    !implicit function of Temp_Core
+    SoundSpeed2_Core=Rgas*Temp_Core/Mu_Core
+  end function SoundSpeed2_Core
+
+  function Mdot_Core()
+    implicit none
+    real(DP) :: Mdot_Core
+    real(DP) :: a3
+    a3=SoundSpeed2_Core()**1.5_DP
+    Mdot_Core=0.975_DP*a3/Grav
+  end function Mdot_Core
+
+  function Rd_Core(t)
+    implicit none
+    real(DP) :: Rd_Core
+    real(DP), intent(in) :: t
+    real(DP), save :: coe
+    integer, save :: itimes
+    if (itimes/=123456) then
+      coe=SoundSpeed2_Core()**2.0_DP*W_Core*W_Core/16.0_DP/Grav/Mdot_Core()
+      itimes=123456
+    endif
+    Rd_Core=coe*t*t*t
+  end function Rd_Core
+
+  function Srt_Core(R_disk, t, it)
+    implicit none
+    real(DP) :: Srt_Core
+    real(DP), intent(in) :: R_disk, t
+    integer, intent(in) :: it
+    real(DP), save :: Mdotsave
+    integer, save :: itsave
+    real(DP), save :: Rdsave
+    integer, save :: itimes
+    if (it/=itsave.OR.itimes/=123456) then
+      Rdsave=Rd_Core(t)
+      Mdotsave=Mdot_Core()
+      itimes=123456
+      itsave=it
+      !write(*,*) 'coe'
+    endif
+    if (R_disk<Rdsave.and.t<tlife_Core) then
+      Srt_Core=Mdotsave/4.0_DP/Pi/R_disk/Rdsave/sqrt(1.0_DP-R_disk/Rdsave)
+    else
+      Srt_Core=0.0_DP
+    endif
+  end function Srt_Core
+
+  function Srtj_Core(R_disk, t, it)
+    implicit none
+    real(DP) :: Srtj_Core
+    real(DP) :: Srt_Core
+    real(DP), intent(in) :: R_disk, t
+    integer, intent(in) :: it
+    real(DP), save :: Mdotsave
+    integer, save :: itsave
+    real(DP), save :: Rdsave
+    integer, save :: itimes
+    real(DP) :: x
+    if (it/=itsave.OR.itimes/=123456) then
+      Rdsave=Rd_Core(t)
+      Mdotsave=Mdot_Core()
+      itimes=123456
+      itsave=it
+      !write(*,*) 'coe'
+    endif
+    if (R_disk<Rdsave.and.t<tlife_Core) then
+      x=R_disk/Rdsave
+      Srt_Core=Mdotsave/4.0_DP/Pi/R_disk/Rdsave/sqrt(1.0_DP-R_disk/Rdsave)
+      Srtj_Core=Srt_Core+Srt_Core*(2.0_DP-3.0_DP*sqrt(x)+x/(1.0_DP+sqrt(x)))
+    else
+      Srtj_Core=0.0_DP
+    endif
+  end function Srtj_Core
+
+
+  !tech fun sub
+  subroutine ReadCloudCorePara(parafname)
+    implicit none
+    !tech var
+    character(*), intent(in) :: parafname
+    character(20) :: st_temp
+    integer :: iost
+    !end tech var
+
+    open(10, file=parafname, status='old')
+    do
+      read(10, *, iostat=iost) st_temp
+      if (iost/=0) exit
+      if (index(st_temp, 'Temp_Core')/=0) then
+        read(10, *) Temp_Core
+      elseif (index(st_temp, 'W_Core')/=0) then
+        read(10, *) W_Core
+      elseif (index(st_temp, 'Mass_Core')/=0) then
+        read(10, *) Mass_Core
+      elseif (index(st_temp, 'Mu_Core')/=0) then
+        read(10, *) Mu_Core
+      endif
+    enddo
+    close(10)
+    Mass_Core=Mass_Core*Msun
+    tlife_Core=Mass_Core/Mdot_Core()
+    write(*,*) '--------Core Para--------'
+    write(*,*) 'W_Core', W_Core
+    write(*,*) 'Temp_Core', Temp_Core
+    write(*,*) 'Mass_Core/Msun', Mass_Core/Msun
+    write(*,*) 'Mu_Core', Mu_Core
+    write(*,*) 'tlife_Core/syear', tlife_Core/syear
+    write(*,*) '-------------------------'
+  end subroutine ReadCloudCorePara
+
+  function Mdot2Starfcore(t)
+    !Mass falls onto the star from the core collapse
+    !Eq 18 of Jin & Sui 2010
+    implicit none
+    real(DP), intent(in) :: t
+    real(DP) :: Mdot2Starfcore
+    if (t<tlife_Core) then
+      Mdot2Starfcore=Mdot_Core()*(1.0_DP-sqrt(1.0_DP-Rin_input/Rd_Core(t)))
+    else
+      Mdot2Starfcore=0.0_DP
+    end if
+  end function
+end module CloudCoreMod
+
+module StellarMod
+  use ConstantMod
+  implicit none
+  real(DP) :: Mass_Stellar
+  real(DP) :: Radius_Stellar
+  real(DP) :: Temp_Stellar
+contains
+  subroutine AddMass_Stellar(AddMass)
+    implicit none
+    real(DP), intent(in) :: AddMass
+    Mass_Stellar=Mass_Stellar+AddMass
+  end subroutine AddMass_Stellar
+
+  !tech fun sub
+  subroutine ReadStellarPara(parafname)
+    implicit none
+    !tech var
+    character(*), intent(in) :: parafname
+    character(20) :: st_temp
+    integer :: iost
+    !end tech var
+
+    open(11, file=parafname, status='old')
+    do
+      read(11, *, iostat=iost) st_temp
+      if (iost/=0) exit
+      if (index(st_temp, 'Temp_Stellar')/=0) then
+        read(11, *) Temp_Stellar
+      elseif (index(st_temp, 'Radius_Stellar')/=0) then
+        read(11, *) Radius_Stellar
+      endif
+    enddo
+    close(11)
+    Radius_Stellar=Radius_Stellar*AU
+    write(*,*) '------Stellar Para--------'
+    write(*,*) 'Temp_Stellar', Temp_Stellar
+    write(*,*) 'Radius_Stellar/AU', Radius_Stellar/AU
+    write(*,*) '-------------------------'
+  end subroutine ReadStellarPara
+end module StellarMod
+
+
+
 module evolve_mod
   use input_parameter_mod
   !module for evolution of the disk
   use tridag_mod
+  use CloudCoreMod
   implicit none
 
   !variable type 8 for double precision
   !integer, parameter :: DP=8
   !length of array (Martin=200)
-  integer, parameter :: nar=120 !Armitage
-
-  !constants
-  real(DP), parameter :: Pi=3.14159265358979_DP
-  real(DP), parameter :: Grav=6.672E-8_DP    !cgs
-  real(DP), parameter :: Rgas=8.31441E7_DP   !cgs
-  real(DP), parameter :: Stfb=5.67032E-5_DP  !cgs
-  real(DP), parameter :: Msun=1.9891E33_DP   !cgs
-  real(DP), parameter :: syear=31556952_DP   !cgs
-  real(DP), parameter :: AU=1.49597870E13_DP !cgs
+  integer, parameter :: nar=1200 !Armitage
 
   !struct for disk
   type :: disk
@@ -178,40 +396,59 @@ module evolve_mod
     real(DP) :: Rin, Rout
     real(DP) :: Mu
     real(DP) :: cp
+    real(DP) :: Massdisk, u_mdmtot
+    real(DP) :: Luminosity
 
     real(DP) :: alpha(0:nar+1), Nu(0:nar+1), cs2(0:nar+1)
+    real(DP) :: alpMRIeff(0:nar+1), alpGI(0:nar+1), alpdead(0:nar+1)
     real(DP) :: Ome(0:nar+1)
-    real(DP) :: Md0, Md1, Md2
+    real(DP) :: Md0, Md1, Md2, Mdaver
+    real(DP) :: Mdr(0:nar+1)
 
     !sq=sqrt(), oo=1/()
     real(DP) :: sqR(0:nar+1), ooR(0:nar+1)
     real(DP) :: dR(1:nar+1), Rh(1:nar+1)
     real(DP) :: sqRh(1:nar+1), oodR(1:nar+1), oodRh(1:nar+1)
+
+    integer :: it
   end type
 
   type(disk) :: md
 
-  real(DP) :: Mstar
+  real(DP) :: Mstar, Lstar, Lacc
 
   !temporary variables
-  real(DP) :: Sigm_temp, Sigg_temp, Q_temp
+  real(DP) :: Sigm_temp, Sigg_temp, Q_temp, Te_temp
+  real(DP) :: alpMRI_temp, alpdead_temp, alpGI_temp
 
 contains
 
-  subroutine init_star()
+  subroutine init_star(Ms)
     implicit none
+    real(DP), intent(in) :: Ms
     !set the initial mass of the Star
-    Mstar=Msun
+    !Mstar=Mstar_input*Msun
+    Mstar=Ms
   end subroutine
 
-  subroutine init_disk()
+  function luminosity_star(Starmass)
+    implicit none
+    real(DP) :: luminosity_star
+    real(DP), intent(in) :: Starmass
+    real(DP) :: lg10lum
+    lg10lum=0.20_DP + 1.74_DP*log10(Starmass/Msun)
+    luminosity_star=Lsun*10.0_DP**lg10lum
+  end function
+
+  subroutine init_disk(t)
     implicit none
     integer :: i
     real(DP) :: dx
+    real(DP), intent(in) :: t
 
     !set the inital conditions
 
-    md%t=0.0_DP
+    md%t=t
 
     md%Mu=2.3_DP
     md%cp=2.7_DP*Rgas/md%Mu
@@ -242,7 +479,8 @@ contains
 
     !initial power low of Sigma and Tc
     do i=1, nar+1
-      md%Sig(i)=1200.0_DP*(md%R(i)/AU)**(-3.0_DP/2.0_DP)
+      !md%Sig(i)=1200.0_DP*(md%R(i)/AU)**(-3.0_DP/2.0_DP)
+      md%Sig(i)=0.0_DP
       md%Tc(i)=280.0_DP*(md%R(i)/AU)**(-1.0_DP/2.0_DP)
     end do
 
@@ -276,6 +514,7 @@ contains
 
     do i=1, nar+1
       rdnsrdr(i)=tdisk%sqRh(i)*(nsr(i)-nsr(i-1))*tdisk%oodR(i)
+      tdisk%Mdr(i)=-6.0_DP*Pi*rdnsrdr(i)
     end do
 
     do i=1, nar
@@ -411,7 +650,8 @@ contains
     integer :: i
 
     do i=1, nar
-      tdisk%Sig(i)=tdisk%Sig(i)+Sigdotfun(tdisk%R(i))*dt
+      !tdisk%Sig(i)=tdisk%Sig(i)+Sigdotfun(tdisk%R(i))*dt
+      tdisk%Sig(i)=tdisk%Sig(i)+Srtj_Core(tdisk%R(i), tdisk%t, tdisk%it)*dt
     end do
   end subroutine
 
@@ -419,7 +659,7 @@ contains
     !calculating Qp and Qm
     !calculating dtmin
     implicit none
-    type(disk), intent(in) :: tdisk
+    type(disk), intent(inout) :: tdisk
     real(DP), intent(out) :: dt
     real(DP), intent(out) :: dTcdt(nar)
     integer :: i
@@ -428,6 +668,7 @@ contains
     do i=1, nar
       Qp(i)=Qp_fun(tdisk%Nu(i), tdisk%Sig(i), tdisk%Ome(i))
       Qm(i)=Qm_fun(tdisk%Ome(i), tdisk%Tc(i), tdisk%Sig(i), tdisk%Mu)
+      tdisk%Te(i)=Te_temp
       !Qm(i)=Qm_fun_Te(tdisk%Te(i))
       dTcdt(i)=2.0_DP*(Qp(i)-Qm(i))/tdisk%cp/tdisk%Sig(i)
     end do
@@ -460,13 +701,46 @@ contains
     implicit none
     type(disk), intent(inout) :: tdisk
     real(DP) :: nsr1, nsr2, nsr3
+    integer :: i
+
     nsr1=tdisk%Nu(1)*tdisk%Sig(1)*tdisk%sqR(1)
     nsr2=tdisk%Nu(2)*tdisk%Sig(2)*tdisk%sqR(2)
     nsr3=tdisk%Nu(3)*tdisk%Sig(3)*tdisk%sqR(3)
     tdisk%Md0=-6.0_DP*Pi*tdisk%sqRh(1)*(nsr1-0.0_DP)/tdisk%dR(1)
     tdisk%Md1=-6.0_DP*Pi*tdisk%sqRh(2)*(nsr2-nsr1)/tdisk%dR(2)
     tdisk%Md2=-6.0_DP*Pi*tdisk%sqRh(3)*(nsr3-nsr2)/tdisk%dR(3)
+
+    tdisk%Mdaver=0.0_DP
+    do i=iMds, iMde
+      tdisk%Mdaver=tdisk%Mdaver+tdisk%Mdr(i)
+    end do
+    tdisk%Mdaver=tdisk%Mdaver/dble(iMde-iMds+1)
   end subroutine
+
+  subroutine calc_disk_luminosity(tdisk)
+    !get disk luminosity from Teff
+    implicit none
+    type(disk), intent(inout) :: tdisk
+    integer :: i
+
+    tdisk%Luminosity=0.0_DP
+    do i=1, nar
+      tdisk%Luminosity=tdisk%Luminosity+2.0_DP*Pi*tdisk%R(i)*tdisk%dR(i)*Stfb*tdisk%Te(i)**4
+    end do
+  end subroutine
+
+  function acc_luminosity(mar, Starmass)
+    implicit none
+    !calculate disk accretion luminosity
+    real(DP) :: acc_luminosity
+    !mass accretion rate
+    real(DP), intent(in) :: mar, Starmass
+
+    !Bae et al 2014
+    acc_luminosity=0.5_DP * Grav*(-mar)*Starmass/Rsun
+    !Hartmann et al. (2016) uses 0.8 instead of 0.5
+    !Here, we use 0.5 as in Bae et al 2014
+  end function
 
   subroutine evolve(thedisk, Ms, tend)
     !evolution of the disk
@@ -481,15 +755,45 @@ contains
     !main loop
     do while (thedisk%t<tend)
 
+      thedisk%Massdisk=mdisk()
+      thedisk%u_mdmtot=thedisk%Massdisk/(thedisk%Massdisk+Ms)
+
       !calculate Nu_tot
       do i=0, nar+1
         thedisk%Ome(i)=Omega_fun(thedisk%R(i), Ms)
         thedisk%cs2(i)=cs2_fun(thedisk%Tc(i), thedisk%Mu)
-        !thedisk%Nu(i)=nu_fun(thedisk%alpha(i), thedisk%cs2(i), thedisk%Ome(i))
-        call calc_nuet(thedisk%R(i), thedisk%Tc(i), thedisk%Sig(i), thedisk%alpha(i), thedisk%Mu, Ms, thedisk%Nu(i), thedisk%Te(i))
-        thedisk%Sigm(i)=Sigm_temp
-        thedisk%Sigg(i)=Sigg_temp
-        thedisk%QToom(i)=Q_temp
+
+       if (thedisk%Sig(i)==0.0_DP) then
+        thedisk%alpMRIeff(i)=0.0_DP
+        thedisk%QToom(i)=1.0E6_DP
+        thedisk%alpGI(i)=0.0_DP
+        thedisk%alpdead(i)=0.0_DP
+        thedisk%alpha(i)=0.0_DP
+        thedisk%Nu(i)=0.0_DP
+       else
+
+        !calc alp_MRI_eff, input(Tc, Sig), output(alpMRIeff, Sigm, Sigg=Sig-Sigm)
+        call calc_alpMRIeff(thedisk%Tc(i), thedisk%Sig(i), thedisk%alpMRIeff(i), thedisk%Sigm(i), thedisk%Sigg(i))
+
+        !calc QToom, then alpGI, using u_mdmtot if choose Kratter
+        thedisk%QToom(i)=QToom(thedisk%cs2(i), thedisk%Ome(i), thedisk%Sig(i))
+        thedisk%alpGI(i)=alpha_GI_Kratter(thedisk%QToom(i), thedisk%u_mdmtot)
+        !thedisk%alpGI(i)=alpha_GI_Arimitage(thedisk%QToom(i))
+
+        thedisk%alpdead(i)=alpha_dead_const()
+
+        !total alpha, Nu
+        thedisk%alpha(i)=thedisk%alpMRIeff(i)+thedisk%alpGI(i)+thedisk%alpdead(i)
+        thedisk%Nu(i)=nu_fun(thedisk%alpha(i), thedisk%cs2(i), thedisk%Ome(i))
+       end if
+
+        !call calc_nuet(thedisk%R(i), thedisk%Tc(i), thedisk%Sig(i), thedisk%alpha(i), thedisk%Mu, Ms, thedisk%Nu(i), thedisk%Te(i))
+        !thedisk%Sigm(i)=Sigm_temp
+        !thedisk%Sigg(i)=Sigg_temp
+        !thedisk%QToom(i)=Q_temp
+        !thedisk%alpMRIeff(i)=alpMRI_temp
+        !thedisk%alpGI(i)=alpGI_temp
+        !thedisk%alpdead(i)=alpdead_temp
         !thedisk%Nu(i)=nu_et(thedisk%R(i), thedisk%Tc(i), thedisk%Sig(i), thedisk%alpha(i), thedisk%Mu, Ms)
       end do
 
@@ -521,9 +825,22 @@ contains
 
       !calculate disk accretion rate
       call calc_disk_acc(thedisk)
+      !calculate disk luminosity
+      call calc_disk_luminosity(thedisk)
+      !calculate star luminosity
+      Lstar=luminosity_star(Mstar)
+      !calculate accretion luminosity
+      Lacc=acc_luminosity(thedisk%Mdaver, Mstar)
+
+      !add Mdot0 into Mstar
+      Mstar=Mstar-md%Md0*dt
+      !add Mass infall onto the Star from the core
+      Mstar=Mstar+Mdot2Starfcore(thedisk%t)*dt
+
       call wriMtfile()
 
       thedisk%t=thedisk%t+dt
+      thedisk%it=thedisk%it+1
 
       !test if Sigma is not a number
       !if nan, stop everything
@@ -568,9 +885,12 @@ contains
       fname=OutStr
       write(*,*) fname
       open(88,file=fname)
-      write(88,'(A5, 8A20)') 'i', 'R(AU)', 'Sigma', 'Tc', 'Te', 'Sigm', 'Sigg', 'Nu', 'Q'
+      write(88, '(A4, F20.1, A4)') '# t=', t/syear, '  yr'
+      write(88,'(A1, 7X, A1, A11, 7A20, 7X, A20)') &
+        '#', 'i', 'R(AU)', 'Sigma', 'Tc', 'Te', &
+        'Sigm', 'Sigg', 'Nu', 'Q', 'Mdot(Msun/yr)'
       do i=1, nar+1
-        write(88,'(I10, 8G20.12)') i, &
+        write(88,'(I10, 12G20.12)') i, &
           md%R(i)/AU, &
           md%Sig(i), &
           md%Tc(i), &
@@ -578,7 +898,11 @@ contains
           md%Sigm(i), &
           md%Sigg(i), &
           md%Nu(i), &
-          md%QToom(i)
+          md%QToom(i), &
+          md%Mdr(i)/Msun*syear, &
+          md%alpMRIeff(i), &
+          md%alpGI(i), &
+          md%alpdead(i)
       end do
       close(88)
       tnext=tnext+tout
@@ -586,7 +910,7 @@ contains
 
     if (ifirst/=666) then
       tnext=t+tout
-      write(*,*) 'tnext', tnext/syear
+      !write(*,*) 'tnext', tnext/syear
       ifirst=666
     end if
 
@@ -596,23 +920,47 @@ contains
     !output the disk accretion rate
     implicit none
     integer, save :: ifirst=0
-    real(DP), save :: Mdsave
+    real(DP), save :: Mdsave, Lsave, tnext
 
     if (ifirst/=666) then
       open(99,file='m.txt')
-      write(99,*) 't', 'Mdot'
+      write(99,'(A10, 5X, 3A20)') '#t(yr)', 'Mdot(Msun/yr)', 'Mdisk(Msun)', 'Mstar(Msun)'
+      close(99)
+      open(99,file='lumi.txt')
+      write(99,'(A10, 5X, 4A20)') '#t(yr)', 'Lumi_disk(Lsun)', 'Lumi_acc(Lsun)', 'Lumi_star(Lsun)', 'Lumi_tot(Lsun)'
       close(99)
       Mdsave=md%Md2
+      Lsave=md%Luminosity
       ifirst=666
+      tnext=0.001_DP
     endif
 
-    if (abs((md%Md2-Mdsave)/Mdsave)>percent_Mdot_input) then
+    !if (abs((md%Md2-Mdsave)/Mdsave)>percent_Mdot_input) then
+    !if (abs((md%Luminosity-Lsave)/Lsave)>percent_Mdot_input) then
+    if (md%t > tnext) then
       open(99,file='m.txt',status='old',position='append')
-      write(99,*) md%t/syear, -md%Md2/Msun*syear
+      md%Massdisk=mdisk()
+      write(99,'(4G20.12)') md%t/syear, -md%Mdaver/Msun*syear, md%Massdisk/Msun, Mstar/Msun
+      close(99)
+      open(99,file='lumi.txt',status='old',position='append')
+      !md%Massdisk=mdisk()
+      write(99,'(5G20.12)') md%t/syear, md%Luminosity/Lsun, Lacc/Lsun, Lstar/Lsun, (md%Luminosity+Lacc+Lstar)/Lsun
       close(99)
       Mdsave=md%Md2
+      !Lsave=md%Luminosity
+      tnext=md%t+syear*outMdot
     end if
   end subroutine
+
+  function mdisk()
+    implicit none
+    real(DP) :: mdisk
+    integer :: i
+    mdisk=0.0_DP
+    do i=1, nar
+      mdisk=mdisk+2.0_DP*Pi*md%R(i)*md%dR(i)*md%Sig(i)
+    end do
+  end function
 
   function cs2_fun(T, mu)
     implicit none
@@ -635,12 +983,89 @@ contains
     nu_fun=alp*cs2/Ome
   end function
 
+  function QToom(cs2, Ome, Sig)
+    implicit none
+    real(DP) :: QToom
+    real(DP), intent(in) :: cs2, Ome, Sig
+    QToom=sqrt(cs2)*Ome/Pi/Grav/Sig
+  end function
+
+  function alpha_GI_Zhu(QR)
+    implicit none
+    real(DP) :: alpha_GI_Zhu
+    real(DP), intent(in) :: QR
+    alpha_GI_Zhu=exp(-QR**4)
+  end function
+
+  function alpha_GI_Kratter(QR, u)
+    !Kratter 2008 681:375 Eq.15-17 Q=max(Q,1) u=Md/(Md+Mstar) Eq.10
+    implicit none
+    real(DP) :: alpha_GI_Kratter
+    real(DP), intent(in) :: QR, u
+    real(DP) :: alp_short, alp_long, QR2
+    QR2=max(1.0_DP, QR)
+    alp_short=max(0.14_DP*(1.3_DP**2/QR2**2-1.0_DP)*(1.0_DP-u)**1.15_DP, 0.0_DP)
+    alp_long=max((1.4E-3_DP*(2.0_DP-QR2))/(u**1.25_DP*sqrt(QR2)), 0.0_DP)
+    alpha_GI_Kratter=sqrt(alp_short**2+alp_long**2)
+    if (alpha_GI_Kratter>0.05_DP) then
+      write(*,*) alpha_GI_Kratter
+      alpha_GI_Kratter=0.05_DP
+    end if
+  end function
+
+  function alpha_GI_Arimitage(Q)
+    implicit none
+    real(DP) :: alpha_GI_Arimitage
+    real(DP), intent(in) :: Q
+    if (Q<Qcirt_input) then
+      alpha_GI_Arimitage=alpha_GI0*((Qcirt_input/Q)**2-1.0_DP)
+    else
+      alpha_GI_Arimitage=0.0_DP
+    end if
+    if (alpha_GI_Arimitage>0.05_DP) then
+      write(*,*) alpha_GI_Arimitage
+      alpha_GI_Arimitage=0.05_DP
+    end if
+  end function
+
+
+  subroutine calc_alpMRIeff(T, Sig, alpMRIeff, Sig_a, Sig_d)
+    implicit none
+    real(DP), intent(out) :: alpMRIeff, Sig_a, Sig_d
+    real(DP), intent(in) :: T, Sig
+
+    if (T>Tcrit_input.OR.Sig<Sigcrit_input) then
+      Sig_a=Sig
+      Sig_d=0.0_DP
+    else
+      Sig_a=Sigcrit_input
+      Sig_d=Sig-Sig_a
+    end if
+
+    alpMRIeff=Sig_a/Sig*alpha_MRI
+  end subroutine
+
+  function alpha_dead_const()
+    implicit none
+    real(DP) :: alpha_dead_const
+    alpha_dead_const=alpha_Dead
+  end function
+
+  function alpha_dead_Bae(Sig_a, Sig_d)
+    implicit none
+    real(DP) :: alpha_dead_Bae
+    real(DP), intent(in) :: Sig_a, Sig_d
+    real(DP) :: frd
+    frd=0.1_DP
+    alpha_dead_Bae=min(1.0E-4_DP, frd*alpha_MRI*Sig_a/Sig_d)
+  end function
+
   subroutine calc_nuet(R, T, Sig, alp, Mu, Ms, nu_et, Te)
     !effective viscosity Nu, the total viscosity
     implicit none
     real(DP), intent(out) :: nu_et, Te
     real(DP), intent(in) :: R, T, Sig, alp, Mu, Ms
-    real(DP) :: nu_a, Sig_a, alp_G, nu_G, Q, cs2, Ome
+    real(DP) :: nu_a, Sig_a, alp_G, nu_G, nu_D, Q, cs2, Ome
     real(DP) :: Sigm, Sigg, Tm, cs2m
     real(DP), save :: Sig_crit
     real(DP), save :: T_crit
@@ -669,9 +1094,12 @@ contains
     else
       Sig_a=Sig_crit
     end if
+    Sigm_temp=Sig_a
+    Sigg_temp=Sig-Sig_a
     cs2=Rgas*T/Mu
     Ome=Omega_fun(R, Ms)
     nu_a=Sig_a/Sig*alp*cs2/Ome
+    alpMRI_temp=Sig_a/Sig*alp
     !cs2m=Rgas*Tm/Mu
     !nu_a=Sigm/Sig*alp*cs2m/Ome
 
@@ -683,11 +1111,20 @@ contains
     else
       alp_G=0.0_DP
     end if
+    if (alp_G>0.05_DP) then
+      write(*,*) alp_G
+      alp_G=0.05_DP
+    end if
+    alpGI_temp=alp_G
     !nu_G=alp_G*cs2/Ome*Sigg/Sig
     nu_G=alp_G*cs2/Ome
 
-    nu_et=nu_a+nu_G
+    nu_D=alpha_Dead*cs2/Ome
+    alpdead_temp=alpha_Dead
+
+    nu_et=nu_a+nu_G+nu_D
   end subroutine
+
 
   function Sigdotfun(R)
     implicit none
@@ -702,6 +1139,78 @@ contains
     else
       Sigdotfun=0.0_DP
     endif
+  end function
+
+  function opacityRossS2003(Temp, rho)
+    implicit none
+    real(8) :: opacityRossS2003
+    real(8), intent(in) :: Temp, rho
+    real(8), save :: opacRoss(10000,111)
+    integer :: iT, ir
+    integer, save :: ifirst=0
+
+    if (ifirst/=123456) then
+      open(444,file='kR.bin',form='unformatted',status='old')
+      do iT=1, 10000
+        read(444) opacRoss(iT,:)
+      end do
+      close(444)
+      !write(*,*)'Rosseland Opacity Readed'
+      ifirst=123456
+    end if
+
+    iT=nint(Temp)
+    ir=nint((log10(rho)+18.0_8)/0.1_8)+1
+
+    if (iT<5) then
+      iT=5
+    else if (iT>=9999) then
+      iT=9999
+    end if
+
+    if (ir<1) then
+      ir=1
+    else if (ir>110) then
+      ir=110
+    end if
+
+    opacityRossS2003=opacRoss(iT, ir)
+  end function
+
+  function opacityPlanckS2003(Temp, rho)
+    implicit none
+    real(8) :: opacityPlanckS2003
+    real(8), intent(in) :: Temp, rho
+    real(8), save :: opacPlanck(10000,111)
+    integer :: iT, ir
+    integer, save :: ifirst=0
+
+    if (ifirst/=123456) then
+      open(445,file='kP.bin',form='unformatted',status='old')
+      do iT=1, 10000
+        read(445) opacPlanck(iT,:)
+      end do
+      close(445)
+      !write(*,*)'Planck Opacity Readed'
+      ifirst=123456
+    end if
+
+    iT=nint(Temp)
+    ir=nint((log10(rho)+18.0_8)/0.1_8)+1
+
+    if (iT<5) then
+      iT=5
+    else if (iT>=9999) then
+      iT=9999
+    end if
+
+    if (ir<1) then
+      ir=1
+    else if (ir>110) then
+      ir=110
+    end if
+
+    opacityPlanckS2003=opacPlanck(iT, ir)
   end function
 
   function kappa(T, rho)
@@ -797,7 +1306,8 @@ contains
     H=sqrt(Rgas*Tc/Mu)/Ome
     rho=Sig/2.0_DP/H
     Q=sqrt(Rgas*Tc/Mu)*Ome/Pi/Grav/Sig
-    kap=kappa(Tc, rho)
+    !kap=kappa(Tc, rho)
+    kap=opacityRossS2003(Tc, rho) !Use Semenov et al 2003 opacity
     if (Q<Qcirt_input) then
       tau=Sig/2.0_DP*kap
     else
@@ -812,6 +1322,7 @@ contains
 
     Te4=8.0_DP/3.0_DP/tau*Tc**4
     Te4=min(Te4, Tc**4)
+    Te_temp=Te4**0.25_DP
     Qm_fun=Stfb*Te4
   end function
 
@@ -1016,19 +1527,37 @@ contains
 end module
 
 
+
 program evol
+  use CloudCoreMod
+  use StellarMod
   use evolve_mod
   implicit none
+  real(DP) :: t
+  integer :: it
 
   call get_parameters()
 
-  call init_star()
-  call init_disk()
+  call ReadCloudCorePara('cloudcorepara.txt')
+  call ReadStellarPara('Stellarpara.txt')
+
+!----------------------------------------------------------
+  t=0.0_DP*syear
+  do while (Rd_Core(t)<Rin_input*1.1_DP)
+    t=t+1.0_DP*syear
+  enddo
+  write(*,*) 't start at', t/syear
+  it=0
+  Mass_Stellar=Mdot_Core()*t
+  write(*,*) 'Mass_Stellar', Mass_Stellar/Msun
+!----------------------------------------------------------
+
+  md%it=0
+
+  call init_star(Mass_Stellar)
+  call init_disk(t)
   call boundary_cond()
 
   call evolve(md, Mstar, tend_input*syear)
 
 end program
-
-
-
