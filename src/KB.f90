@@ -780,7 +780,8 @@ contains
         thedisk%alpGI(i)=alpha_GI_Kratter(thedisk%QToom(i), thedisk%u_mdmtot)
         !thedisk%alpGI(i)=alpha_GI_Arimitage(thedisk%QToom(i))
 
-        thedisk%alpdead(i)=alpha_dead_const()
+        !thedisk%alpdead(i)=alpha_dead_const()
+        thedisk%alpdead(i)=alpha_dead_Bae(thedisk%Sigm(i), thedisk%Sigg(i))
 
         !total alpha, Nu
         thedisk%alpha(i)=thedisk%alpMRIeff(i)+thedisk%alpGI(i)+thedisk%alpdead(i)
