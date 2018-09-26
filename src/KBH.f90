@@ -666,7 +666,8 @@ contains
     real(DP) :: Qp(nar), Qm(nar), dtft
 
     do i=1, nar
-      Qp(i)=Qp_fun(tdisk%Nu(i), tdisk%Sig(i), tdisk%Ome(i))
+      !Qp(i)=Qp_fun(tdisk%Nu(i), tdisk%Sig(i), tdisk%Ome(i))
+      Qp(i)=Qp_fun_allheating(tdisk, i)
       Qm(i)=Qm_fun(tdisk%Ome(i), tdisk%Tc(i), tdisk%Sig(i), tdisk%Mu)
       tdisk%Te(i)=Te_temp
       !Qm(i)=Qm_fun_Te(tdisk%Te(i))
@@ -1295,6 +1296,53 @@ contains
     real(DP) :: Qp_fun
     real(DP), intent(in) :: nu, Sig, Ome
     Qp_fun=9.0_DP/8.0_DP*nu*Sig*Ome**2
+  end function
+
+  function Qp_fun_allheating(td, i)
+    implicit none
+    type(disk), intent(inout) :: td
+    real(DP) :: Qp_fun_allheating
+    !viscous, infall, exteranl heating
+    real(DP) :: Qp_vis, Qp_infall, Qp_ext
+    !star, accretion, envelope heating
+    real(DP) :: sT4_star, sT4_acc, sT4_env
+    real(DP) :: Rc, RRc
+    real(DP) :: fstar, facc
+    real(DP) :: tau, H, kap, rho
+    integer, intent(in) :: i
+    !viscous heating
+    Qp_vis=9.0_DP/8.0_DP*td%Nu(i)*td%Sig(i)*td%Ome(i)**2
+
+    !infall heating Eq 19 of Bae et al 2013
+    Rc=Rd_Core(td%t)
+    RRC=td%R(i)/Rc
+    if (RRc<0.2_DP) then
+      Qp_infall=0.0_DP
+    else
+      Qp_infall=Grav*Mstar*Mdot_Core()/4.0_DP/Pi/Rc**3 *(3.0_DP-2.0_DP*sqrt(RRc))/RRc**2
+    end if
+
+    fstar=0.1_DP
+    sT4_star=fstar*Lstar/4.0_DP/Pi/td%R(i)**2
+
+    facc=0.1_DP
+    sT4_acc=facc*Lacc/4.0_DP/Pi/td%R(i)**2
+
+    sT4_env=Stfb*Temp_Core**4
+
+
+    H=sqrt(Rgas*td%Tc(i)/td%Mu)/td%Ome(i)
+    rho=td%Sig(i)/2.0_DP/H
+    !kap=kappa(Tc, rho)
+    kap=opacityRossS2003(td%Tc(i), rho) !Use Semenov et al 2003 opacity
+    tau=kap*td%Sig(i)
+
+    !Eq 12 of Bae et al 2013
+    Qp_ext=16.0_DP/3.0_DP*(sT4_star+sT4_acc+sT4_env)*tau/(1.0_DP+tau**2)
+
+    !Eq 22 of Bae et al 2013
+    Qp_fun_allheating=Qp_vis+Qp_infall+Qp_ext
+
   end function
 
   function Qm_fun(Ome, Tc, Sig, Mu)
