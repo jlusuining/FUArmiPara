@@ -386,7 +386,7 @@ module evolve_mod
   !variable type 8 for double precision
   !integer, parameter :: DP=8
   !length of array (Martin=200)
-  integer, parameter :: nar=1200 !Armitage
+  integer, parameter :: nar=240 !Armitage
 
   !struct for disk
   type :: disk
@@ -401,6 +401,8 @@ module evolve_mod
 
     real(DP) :: alpha(0:nar+1), Nu(0:nar+1), cs2(0:nar+1)
     real(DP) :: alpMRIeff(0:nar+1), alpGI(0:nar+1), alpdead(0:nar+1)
+    real(DP) :: Qpvis(0:nar+1), Qpinfall(0:nar+1), Qpext(0:nar+1)
+    real(DP) :: sTstar(0:nar+1), sTacc(0:nar+1), sTenv(0:nar+1)
     real(DP) :: Ome(0:nar+1)
     real(DP) :: Md0, Md1, Md2, Mdaver
     real(DP) :: Mdr(0:nar+1)
@@ -665,6 +667,8 @@ contains
     integer :: i
     real(DP) :: Qp(nar), Qm(nar), dtft
 
+    integer :: idt
+
     do i=1, nar
       !Qp(i)=Qp_fun(tdisk%Nu(i), tdisk%Sig(i), tdisk%Ome(i))
       Qp(i)=Qp_fun_allheating(tdisk, i)
@@ -679,8 +683,13 @@ contains
       dtft=0.1_DP*abs(tdisk%Tc(i)/dTcdt(i))
       if (dt>dtft) then
         dt=dtft
+        idt=i
       end if
     end do
+
+    !write(*,*) dt/syear, idt
+    !write(*,*) md%Qpvis(idt), md%Qpinfall(idt), md%Qpext(idt)
+    !write(*,*) md%sTstar(idt), md%sTacc(idt), md%sTenv(i)
 
   end subroutine
 
@@ -739,6 +748,9 @@ contains
 
     !Bae et al 2014
     acc_luminosity=0.5_DP * Grav*(-mar)*Starmass/Rsun
+    if (acc_luminosity<0.0_DP) then
+      acc_luminosity=0.0_DP
+    end if
     !Hartmann et al. (2016) uses 0.8 instead of 0.5
     !Here, we use 0.5 as in Bae et al 2014
   end function
@@ -888,11 +900,12 @@ contains
       write(*,*) fname
       open(88,file=fname)
       write(88, '(A4, F20.1, A4)') '# t=', t/syear, '  yr'
-      write(88,'(A1, 7X, A1, A11, 7A20, 7X, A20)') &
+      write(88,'(A1, 7X, A1, A11, 10A20, 7X, A20)') &
         '#', 'i', 'R(AU)', 'Sigma', 'Tc', 'Te', &
-        'Sigm', 'Sigg', 'Nu', 'Q', 'Mdot(Msun/yr)'
+        'Sigm', 'Sigg', 'Nu', 'Q', 'Mdot(Msun/yr)', &
+        'Qpvis', 'Qpinfall', 'Qpext'
       do i=1, nar+1
-        write(88,'(I10, 12G20.12)') i, &
+        write(88,'(I10, 15G20.12)') i, &
           md%R(i)/AU, &
           md%Sig(i), &
           md%Tc(i), &
@@ -904,7 +917,10 @@ contains
           md%Mdr(i)/Msun*syear, &
           md%alpMRIeff(i), &
           md%alpGI(i), &
-          md%alpdead(i)
+          md%alpdead(i), &
+          md%Qpvis(i), &
+          md%Qpinfall(i), &
+          md%Qpext(i)
       end do
       close(88)
       tnext=tnext+tout
@@ -1068,7 +1084,7 @@ contains
     real(DP), intent(out) :: nu_et, Te
     real(DP), intent(in) :: R, T, Sig, alp, Mu, Ms
     real(DP) :: nu_a, Sig_a, alp_G, nu_G, nu_D, Q, cs2, Ome
-    real(DP) :: Sigm, Sigg, Tm, cs2m
+    !real(DP) :: Sigm, Sigg, Tm, cs2m
     real(DP), save :: Sig_crit
     real(DP), save :: T_crit
     real(DP), save :: Q_crit
@@ -1316,7 +1332,7 @@ contains
     !infall heating Eq 19 of Bae et al 2013
     Rc=Rd_Core(td%t)
     RRC=td%R(i)/Rc
-    if (RRc<0.2_DP) then
+    if (RRc<0.2_DP.OR.RRc>1.0_DP) then
       Qp_infall=0.0_DP
     else
       Qp_infall=Grav*Mstar*Mdot_Core()/4.0_DP/Pi/Rc**3 *(3.0_DP-2.0_DP*sqrt(RRc))/RRc**2
@@ -1342,6 +1358,14 @@ contains
 
     !Eq 22 of Bae et al 2013
     Qp_fun_allheating=Qp_vis+Qp_infall+Qp_ext
+
+    td%Qpvis(i)=Qp_vis
+    td%Qpinfall(i)=Qp_infall
+    td%Qpext(i)=Qp_ext
+
+    td%sTstar(i)=sT4_star
+    td%sTacc(i)=sT4_acc
+    td%sTenv(i)=sT4_env
 
   end function
 
